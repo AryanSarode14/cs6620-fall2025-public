@@ -1,44 +1,61 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
-
-name: Python application
+name: Docker Build, Push, and Deploy
 
 on:
-  push:
-    branches: [ "week02" ]
-  pull_request:
-    branches: [ "week02" ]
+push:
+branches: [ "week02" ]
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+build:
+runs-on: ubuntu-latest
 
-    steps:
-    - uses: actions/checkout@v4
+```
+steps:
+- name: Checkout code
+  uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.x'
+- name: Set up Docker Buildx
+  uses: docker/setup-buildx-action@v3
 
-    - name: Install system dependencies (SDL)
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libsdl1.2-dev
+- name: Login to Docker Hub
+  uses: docker/login-action@v3
+  with:
+    username: ${{ secrets.DOCKERHUB_USERNAME }}
+    password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+- name: Build Docker image
+  run: |
+    docker build -t aryansarode/cs6620-app:latest .
 
-    - name: Lint with flake8
-      run: |
-        pip install flake8
-        flake8 .
-      continue-on-error: true   # This line ensures the workflow doesn't block on lint errors
+- name: Push Docker image
+  run: |
+    docker push aryansarode/cs6620-app:latest
+```
 
-    - name: Test with pytest
-      run: |
-        pip install pytest
-        pytest
-      continue-on-error: true   # This line ensures the workflow doesn't block on test errors
+deploy:
+needs: build
+runs-on: ubuntu-latest
+
+```
+steps:
+- name: Configure AWS Credentials
+  uses: aws-actions/configure-aws-credentials@v4
+  with:
+    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+    aws-region: ${{ secrets.AWS_REGION }}
+
+- name: Deploy to EC2 using SSM
+  run: |
+    aws ssm send-command \
+      --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+      --document-name "AWS-RunShellScript" \
+      --parameters 'commands=[
+        "docker pull aryansarode/cs6620-app:latest",
+        "docker stop cs6620-app || true",
+        "docker rm cs6620-app || true",
+        "docker run -d --name cs6620-app -p 80:3000 --restart unless-stopped aryansarode/cs6620-app:latest"
+      ]' \
+      --region ${{ secrets.AWS_REGION }}
+```
+
