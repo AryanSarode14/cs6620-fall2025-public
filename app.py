@@ -23,3 +23,15 @@ def home():
     </body>
     </html>
     """
+
+@app.route("/health")
+def health():
+    return {
+        "status": "healthy",
+        "version": "2.0",
+        "deployment_method": "automated",
+        "timestamp": str(datetime.now())
+    }
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=3000, debug=True)
